@@ -1,10 +1,11 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Pim\Component\Catalog\Completeness;
 
 use Akeneo\Component\StorageUtils\Repository\CachedObjectRepositoryInterface;
 use Doctrine\Common\Collections\ArrayCollection;
-use Doctrine\Common\Collections\Collection;
 use Pim\Component\Catalog\Completeness\Checker\ValueCompleteCheckerInterface;
 use Pim\Component\Catalog\Factory\ValueFactory;
 use Pim\Component\Catalog\Model\ChannelInterface;
@@ -69,22 +70,33 @@ class CompletenessCalculator implements CompletenessCalculatorInterface
     /**
      * {@inheritdoc}
      */
-    public function calculate(ProductInterface $product)
+    public function calculate(ProductInterface $product): array
     {
         if (null === $product->getFamily()) {
             return [];
         }
 
         $completenesses = [];
-        $requiredProductValues = $this->getRequiredProductValues($product->getFamily());
+        $requiredProductValues = $this->getRequiredValues($product->getFamily());
 
         foreach ($requiredProductValues as $channelCode => $requiredProductValuesByChannel) {
             foreach ($requiredProductValuesByChannel as $localeCode => $requiredProductValuesByChannelAndLocale) {
+                $channel = $this->channelRepository->findOneByIdentifier($channelCode);
+                $locale = $this->localeRepository->findOneByIdentifier($localeCode);
+
+                $missingRequiredAttributes = $this->generateMissingAttributes(
+                    $product->getValues(),
+                    $channel,
+                    $locale,
+                    $requiredProductValuesByChannelAndLocale
+                );
+
                 $completenesses[] = $this->generateCompleteness(
                     $product,
+                    $channel,
+                    $locale,
                     $requiredProductValuesByChannelAndLocale,
-                    $channelCode,
-                    $localeCode
+                    $missingRequiredAttributes
                 );
             }
         }
@@ -147,9 +159,9 @@ class CompletenessCalculator implements CompletenessCalculatorInterface
      *
      * @return array
      */
-    protected function getRequiredProductValues(FamilyInterface $family)
+    protected function getRequiredValues(FamilyInterface $family): array
     {
-        $productValues = [];
+        $values = [];
 
         foreach ($family->getAttributeRequirements() as $attributeRequirement) {
             foreach ($attributeRequirement->getChannel()->getLocales() as $locale) {
@@ -169,46 +181,37 @@ class CompletenessCalculator implements CompletenessCalculatorInterface
                         null
                     );
 
-                    if (!isset($productValues[$channelCode][$localeCode])) {
-                        $productValues[$channelCode][$localeCode] = new ValueCollection();
+                    if (!isset($values[$channelCode][$localeCode])) {
+                        $values[$channelCode][$localeCode] = new ValueCollection();
                     }
-                    $productValues[$channelCode][$localeCode]->add($productValue);
+                    $values[$channelCode][$localeCode]->add($productValue);
                 }
             }
         }
 
-        return $productValues;
+        return $values;
     }
 
     /**
-     * Generates one completeness for the given required product value, channel
-     * code, locale code and the product values to compare.
-     *
-     * @param ProductInterface         $product
+     * @param ValueCollectionInterface $productValues
+     * @param ChannelInterface         $channel
+     * @param LocaleInterface          $locale
      * @param ValueCollectionInterface $requiredValues
-     * @param string                   $channelCode
-     * @param string                   $localeCode
      *
-     * @return CompletenessInterface
+     * @return MissingRequiredAttributes
      */
-    protected function generateCompleteness(
-        ProductInterface $product,
-        ValueCollectionInterface $requiredValues,
-        $channelCode,
-        $localeCode
-    ) {
-        $channel = $this->channelRepository->findOneByIdentifier($channelCode);
-        $locale = $this->localeRepository->findOneByIdentifier($localeCode);
-
-        $actualValues = $product->getValues();
-        $missingAttributes = new ArrayCollection();
-        $missingCount = 0;
-        $requiredCount = 0;
+    protected function generateMissingAttributes(
+        ValueCollectionInterface $productValues,
+        ChannelInterface $channel,
+        LocaleInterface $locale,
+        ValueCollectionInterface $requiredValues
+    ): MissingRequiredAttributes {
+        $missingRequiredAttribute = new MissingRequiredAttributes();
 
         foreach ($requiredValues as $requiredValue) {
             $attribute = $requiredValue->getAttribute();
 
-            $productValue = $actualValues->getByCodes(
+            $productValue = $productValues->getByCodes(
                 $attribute->getCode(),
                 $requiredValue->getScope(),
                 $requiredValue->getLocale()
@@ -217,52 +220,45 @@ class CompletenessCalculator implements CompletenessCalculatorInterface
             if (null === $productValue ||
                 !$this->productValueCompleteChecker->isComplete($productValue, $channel, $locale)
             ) {
-                if (!$missingAttributes->contains($attribute)) {
-                    $missingAttributes->add($attribute);
-                    $missingCount++;
-                }
+                $missingRequiredAttribute->add($attribute);
             }
-
-            $requiredCount++;
         }
 
-        $completeness = $this->createCompleteness(
-            $product,
-            $channel,
-            $locale,
-            $missingAttributes,
-            $missingCount,
-            $requiredCount
-        );
-
-        return $completeness;
+        return $missingRequiredAttribute;
     }
 
     /**
-     * @param ProductInterface $product
-     * @param ChannelInterface $channel
-     * @param LocaleInterface  $locale
-     * @param Collection       $missingAttributes
-     * @param int              $missingCount
-     * @param int              $requiredCount
+     * Generates one completeness for the given required product value, channel
+     * code, locale code, required attribute list and the missing missing required attributes list.
+     *
+     * @param ProductInterface               $product
+     * @param ChannelInterface               $channel
+     * @param LocaleInterface                $locale
+     * @param ValueCollectionInterface $requiredValues
+     * @param MissingRequiredAttributes      $missingRequiredAttributes
      *
      * @return CompletenessInterface
      */
-    private function createCompleteness(
+    protected function generateCompleteness(
         ProductInterface $product,
         ChannelInterface $channel,
         LocaleInterface $locale,
-        Collection $missingAttributes,
-        $missingCount,
-        $requiredCount
-    ) {
-        return new $this->completenessClass(
+        ValueCollectionInterface $requiredValues,
+        MissingRequiredAttributes $missingRequiredAttributes
+    ): CompletenessInterface {
+        $missingAttributesCount = count($missingRequiredAttributes);
+        $requiredAttributesCount = count($requiredValues);
+        $missingRequiredAttributes = new ArrayCollection($missingRequiredAttributes->getAttributes());
+
+        $completeness = new $this->completenessClass(
             $product,
             $channel,
             $locale,
-            $missingAttributes,
-            $missingCount,
-            $requiredCount
+            $missingRequiredAttributes,
+            $missingAttributesCount,
+            $requiredAttributesCount
         );
+
+        return $completeness;
     }
 }
