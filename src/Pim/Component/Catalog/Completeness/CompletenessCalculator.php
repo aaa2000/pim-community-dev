@@ -48,9 +48,6 @@ class CompletenessCalculator implements CompletenessCalculatorInterface
      * @param MissingRequiredAttributesCalculator $missingRequiredAttributesCalculator
      * @param RequiredValuesGenerator             $requiredValuesGenerator
      * @param string                              $completenessClass
-     *
-     * @internal param ValueFactory $productValueFactory
-     * @internal param ValueCompleteCheckerInterface $productValueCompleteChecker
      */
     public function __construct(
         CachedObjectRepositoryInterface $channelRepository,

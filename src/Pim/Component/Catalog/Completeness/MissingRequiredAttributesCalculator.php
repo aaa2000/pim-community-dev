@@ -42,13 +42,13 @@ class MissingRequiredAttributesCalculator
     /**
      * Generates a two dimenssionnal array....
      *
-     * @param ValueCollectionInterface $productValues
-     * @param ValueCollectionInterface $requiredValues
+     * @param ValueCollectionInterface       $values
+     * @param array|ValueCollectionInterface $requiredValues
      *
      * @return array
      */
     public function generate(
-        ValueCollectionInterface $productValues,
+        ValueCollectionInterface $values,
         array $requiredValues
     ): array {
         $missingRequiredAttributes = [];
@@ -63,14 +63,14 @@ class MissingRequiredAttributesCalculator
                 foreach ($requiredValuesByChannelAndLocale as $requiredValue) {
                     $attribute = $requiredValue->getAttribute();
 
-                    $productValue = $productValues->getByCodes(
+                    $value = $values->getByCodes(
                         $attribute->getCode(),
                         $requiredValue->getScope(),
                         $requiredValue->getLocale()
                     );
 
-                    if (null === $productValue ||
-                        !$this->valueCompleteChecker->isComplete($productValue, $channel, $locale)
+                    if (null === $value ||
+                        !$this->valueCompleteChecker->isComplete($value, $channel, $locale)
                     ) {
                         $missingRequiredAttributesForChannelAndLocale->add($attribute);
                     }
