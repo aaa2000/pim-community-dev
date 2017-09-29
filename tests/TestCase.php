@@ -2,7 +2,10 @@
 
 namespace Akeneo\Test\Integration;
 
+use Akeneo\Test\IntegrationTestsBundle\Doctrine\Connection\ConnectionCloser;
+use Akeneo\Test\IntegrationTestsBundle\Loader\FixturesLoader;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
+use Symfony\Component\HttpKernel\KernelInterface;
 
 /**
  * @author    Marie Bochu <marie.bochu@akeneo.com>
@@ -11,6 +14,9 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
  */
 abstract class TestCase extends KernelTestCase
 {
+    /** @var KernelInterface */
+    protected $testKernel;
+
     /**
      * @return Configuration
      */
@@ -23,12 +29,10 @@ abstract class TestCase extends KernelTestCase
     {
         static::bootKernel(['debug' => false]);
 
-        $configuration = $this->getConfiguration();
+        $this->testKernel = new \AppKernelTest('test', false);
+        $this->testKernel->boot();
 
-        $databaseSchemaHandler = $this->getDatabaseSchemaHandler();
-
-        $fixturesLoader = $this->getFixturesLoader($configuration, $databaseSchemaHandler);
-        $fixturesLoader->load();
+        $this->getFixturesLoader()->load();
     }
 
     /**
@@ -56,37 +60,10 @@ abstract class TestCase extends KernelTestCase
      */
     protected function tearDown()
     {
-        $connectionCloser = $this->getConnectionCloser();
+        $connectionCloser = $this->testKernel->getContainer()->get('akeneo_integration_tests.doctrine.connection.connection_closer');
         $connectionCloser->closeConnections();
 
         parent::tearDown();
-    }
-
-    /**
-     * @return DatabaseSchemaHandler
-     */
-    protected function getDatabaseSchemaHandler()
-    {
-        return new DatabaseSchemaHandler(static::$kernel);
-    }
-
-    /**
-     * @param Configuration         $configuration
-     * @param DatabaseSchemaHandler $databaseSchemaHandler
-     *
-     * @return FixturesLoader
-     */
-    protected function getFixturesLoader(Configuration $configuration, DatabaseSchemaHandler $databaseSchemaHandler)
-    {
-        return new FixturesLoader(static::$kernel, $configuration, $databaseSchemaHandler);
-    }
-
-    /**
-     * @return ConnectionCloser
-     */
-    protected function getConnectionCloser()
-    {
-        return new ConnectionCloser(static::$kernel->getContainer());
     }
 
     /**
@@ -110,5 +87,16 @@ abstract class TestCase extends KernelTestCase
         }
 
         throw new \Exception(sprintf('The fixture "%s" does not exist.', $name));
+    }
+
+    /**
+     * @return FixturesLoader
+     */
+    private function getFixturesLoader(): FixturesLoader
+    {
+        $configuration = $this->getConfiguration();
+        $factory = $this->testKernel->getContainer()->get('akeneo_integration_tests.loader.fixtures_loader_factory');
+
+        return $factory->create($configuration);
     }
 }

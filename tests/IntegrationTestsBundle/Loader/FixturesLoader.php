@@ -1,7 +1,8 @@
 <?php
 
-namespace Akeneo\Test\Integration;
+namespace Akeneo\Test\IntegrationTestsBundle\Loader;
 
+use Akeneo\Test\Integration\Configuration;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
@@ -198,9 +199,8 @@ class FixturesLoader
     {
         $bundles = $this->container->getParameter('kernel.bundles');
         if (isset($bundles['AcmeAppBundle'])) {
-            $entityManager = $this->container->get('doctrine.orm.entity_manager');
-            $referenceDataLoader = new ReferenceDataLoader();
-            $referenceDataLoader->load($entityManager);
+            $referenceDataLoader = $this->container->get('akeneo_integration_tests.loader.reference_data_loader');
+            $referenceDataLoader->load();
         }
     }
 
