@@ -6,6 +6,7 @@ use Akeneo\Test\IntegrationTestsBundle\Doctrine\Connection\ConnectionCloser;
 use Akeneo\Test\IntegrationTestsBundle\Loader\FixturesLoader;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\HttpKernel\KernelInterface;
+use Symfony\Component\Security\Core\Authentication\Token\UsernamePasswordToken;
 
 /**
  * @author    Marie Bochu <marie.bochu@akeneo.com>
@@ -28,6 +29,7 @@ abstract class TestCase extends KernelTestCase
     protected function setUp()
     {
         static::bootKernel(['debug' => false]);
+        $this->useAdminUser();
 
         $this->testKernel = new \AppKernelTest('test', false);
         $this->testKernel->boot();
@@ -50,6 +52,16 @@ abstract class TestCase extends KernelTestCase
      *
      * @return mixed
      */
+    protected function getFromTestKernel($service)
+    {
+        return $this->testKernel->getContainer()->get($service);
+    }
+
+    /**
+     * @param string $service
+     *
+     * @return mixed
+     */
     protected function getParameter($service)
     {
         return static::$kernel->getContainer()->getParameter($service);
@@ -64,6 +76,16 @@ abstract class TestCase extends KernelTestCase
         $connectionCloser->closeConnections();
 
         parent::tearDown();
+    }
+
+    /**
+     * Use the admin user by default to execute the tests.
+     */
+    protected function useAdminUser(): void
+    {
+        $user = $this->get('pim_user.provider.user')->loadUserByUsername('admin');
+        $token = new UsernamePasswordToken($user, null, 'main', $user->getRoles());
+        $this->get('security.token_storage')->setToken($token);
     }
 
     /**
